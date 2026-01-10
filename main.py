@@ -58,7 +58,8 @@ class PolyShadowMonitor:
         )
         self.alerter = TelegramAlerter(
             config.telegram_bot_token,
-            config.telegram_chat_id
+            config.telegram_chat_id,
+            config.telegram_thread_id or None
         )
         
         logger.info("✅ All components initialized successfully")

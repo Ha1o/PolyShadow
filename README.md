@@ -83,12 +83,25 @@ POLYGON_RPC_URL=https://polygon-mainnet.infura.io/v3/YOUR_KEY
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token
 TELEGRAM_CHAT_ID=your_chat_id
 
+# Optional: For groups with Topics enabled
+TELEGRAM_THREAD_ID=
+
 # Thresholds (optional - defaults shown)
 POLL_INTERVAL_SECONDS=30
 MIN_TRADE_AMOUNT_USDC=10000
 MAX_ODDS_FOR_CONTRARIAN=0.30
 SUSPICIOUS_WALLET_NONCE_THRESHOLD=10
 ```
+
+#### Telegram Notification Modes
+
+| Configuration | Behavior |
+|---------------|----------|
+| `CHAT_ID` = your user ID, `THREAD_ID` = empty | Bot sends DM to you |
+| `CHAT_ID` = group ID, `THREAD_ID` = empty | Bot posts to group main chat |
+| `CHAT_ID` = group ID, `THREAD_ID` = 123 | Bot posts to specific topic #123 |
+
+> **Tip**: To get a Topic ID, right-click the topic → "Copy Topic Link" → the last number in the URL is the Thread ID.
 
 ### Run
 

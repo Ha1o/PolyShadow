@@ -18,6 +18,7 @@ class Config:
     # Telegram
     telegram_bot_token: str
     telegram_chat_id: str
+    telegram_thread_id: str  # Optional: for groups with Topics enabled
     
     # Polymarket API (optional)
     polymarket_api_key: str
@@ -60,6 +61,7 @@ def load_config() -> Config:
         polygon_rpc_url=polygon_rpc_url,
         telegram_bot_token=telegram_bot_token,
         telegram_chat_id=telegram_chat_id,
+        telegram_thread_id=os.getenv("TELEGRAM_THREAD_ID", ""),
         polymarket_api_key=os.getenv("POLYMARKET_API_KEY", ""),
         polymarket_api_secret=os.getenv("POLYMARKET_API_SECRET", ""),
         polymarket_api_passphrase=os.getenv("POLYMARKET_API_PASSPHRASE", ""),

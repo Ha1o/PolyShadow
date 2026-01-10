@@ -103,16 +103,18 @@ class TelegramAlerter:
     
     TELEGRAM_API_BASE = "https://api.telegram.org/bot"
     
-    def __init__(self, bot_token: str, chat_id: str):
+    def __init__(self, bot_token: str, chat_id: str, thread_id: str = None):
         """
         Initialize Telegram alerter.
         
         Args:
             bot_token: Telegram Bot API token
             chat_id: Target chat/channel ID
+            thread_id: Optional topic/thread ID for groups with Topics enabled
         """
         self.bot_token = bot_token
         self.chat_id = chat_id
+        self.thread_id = thread_id
         self.api_url = f"{self.TELEGRAM_API_BASE}{bot_token}"
     
     def send_message(self, text: str, parse_mode: str = "HTML") -> bool:
@@ -127,14 +129,20 @@ class TelegramAlerter:
             bool: True if sent successfully
         """
         try:
+            payload = {
+                "chat_id": self.chat_id,
+                "text": text,
+                "parse_mode": parse_mode,
+                "disable_web_page_preview": False,
+            }
+            
+            # Add thread_id for Telegram Topics support
+            if self.thread_id:
+                payload["message_thread_id"] = int(self.thread_id)
+            
             response = requests.post(
                 f"{self.api_url}/sendMessage",
-                json={
-                    "chat_id": self.chat_id,
-                    "text": text,
-                    "parse_mode": parse_mode,
-                    "disable_web_page_preview": False,
-                },
+                json=payload,
                 timeout=10
             )
             

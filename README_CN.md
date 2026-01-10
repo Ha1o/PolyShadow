@@ -54,7 +54,16 @@ cp .env.example .env
 |------|------|----------|
 | `POLYGON_RPC_URL` | Polygon RPC 节点链接 | [Infura](https://infura.io/) 或 [Alchemy](https://alchemy.com/) |
 | `TELEGRAM_BOT_TOKEN` | Telegram 机器人 Token | [@BotFather](https://t.me/BotFather) |
-| `TELEGRAM_CHAT_ID` | 你的 Telegram ID | [@userinfobot](https://t.me/userinfobot) |
+| `TELEGRAM_CHAT_ID` | 你的 Telegram ID 或群组 ID | [@userinfobot](https://t.me/userinfobot) |
+| `TELEGRAM_THREAD_ID` | （可选）群组话题 ID | 右键话题 → 复制链接 → URL 最后的数字 |
+
+#### Telegram 通知模式
+
+| 配置方式 | 效果 |
+|----------|------|
+| `CHAT_ID` = 个人ID，`THREAD_ID` = 空 | Bot 私信你 |
+| `CHAT_ID` = 群组ID，`THREAD_ID` = 空 | 发到群组主聊天 |
+| `CHAT_ID` = 群组ID，`THREAD_ID` = 123 | 发到群组指定话题 #123 |
 
 ---
 

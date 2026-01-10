@@ -1,5 +1,7 @@
 # PolyShadow 🕵️‍♂️
 
+[English](./README.md) | [中文文档](./README_CN.md)
+
 **Insider Trading Monitor for Polymarket Politics**
 
 PolyShadow monitors Polymarket's political prediction markets for suspicious trading activity. It identifies large contrarian bets placed by fresh wallets—a pattern often associated with insider trading.

@@ -1,0 +1,8 @@
+# PolyShadow - Polymarket Insider Trading Monitor
+# Install: pip install -r requirements.txt
+
+# Core dependencies
+web3>=6.0.0              # Polygon RPC for wallet nonce checks
+requests>=2.31.0         # HTTP client for Polymarket API
+python-dotenv>=1.0.0     # Environment variable management
+tenacity>=8.2.0          # Retry logic with exponential backoff

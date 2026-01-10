@@ -3,6 +3,7 @@ PolyShadow Telegram Alert Module
 Sends beautifully formatted alerts with threat level classification.
 """
 
+import html
 import requests
 import logging
 from dataclasses import dataclass
@@ -92,6 +93,11 @@ def format_amount(amount: float) -> str:
         return f"${amount:.2f}"
 
 
+def escape_html(text: str) -> str:
+    """Escape HTML special characters to prevent Telegram parse errors."""
+    return html.escape(str(text))
+
+
 class TelegramAlerter:
     """Sends beautifully formatted alerts to Telegram."""
     
@@ -169,14 +175,18 @@ class TelegramAlerter:
         # Determine bet direction emoji
         bet_emoji = "🔴" if alert.outcome.upper() == "NO" else "🟢"
         
+        # Escape user-provided data to prevent HTML parse errors
+        safe_market_name = escape_html(alert.market_name[:60])
+        safe_outcome = escape_html(alert.outcome.upper())
+        
         # Build the beautiful message
         message = f"""{tag}
 {'━' * 30}
 {emoji} <b>Level {level.name}</b> | {level.value}
 
-🎯 <b>Event</b>: {alert.market_name[:60]}{'...' if len(alert.market_name) > 60 else ''}
+🎯 <b>Event</b>: {safe_market_name}{'...' if len(alert.market_name) > 60 else ''}
 
-{bet_emoji} <b>Bet</b>: <code>{alert.outcome.upper()}</code>
+{bet_emoji} <b>Bet</b>: <code>{safe_outcome}</code>
 📉 <b>Odds</b>: {odds_percent} <i>(Contrarian!)</i>
 💰 <b>Size</b>: <code>{amount_str}</code> (${alert.amount_usdc:,.0f})
 
@@ -198,7 +208,7 @@ class TelegramAlerter:
 📊 <b>Monitoring</b>: Polymarket Politics
 💰 <b>Min Amount</b>: $10,000 USDC
 📉 <b>Max Odds</b>: ≤30% (Contrarian only)
-👛 <b>Wallet Filter</b>: Nonce < 10
+👛 <b>Wallet Filter</b>: Nonce &lt; 10
 
 🦈 Alert Levels:
    👻 <b>S-GHOST</b>: New wallet + $20K+ bet

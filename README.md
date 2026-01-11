@@ -32,18 +32,22 @@ PolyShadow detects this by querying the wallet's transaction count (nonce) on Po
 
 ## 🚨 Alert Levels
 
-| Level | Name | Emoji | Criteria |
-|-------|------|-------|----------|
-| **S** | Ghost | 👻 | Nonce ≤1 + $20K+ bet |
-| **A** | Whale | 🐳 | $50K+ bet from any wallet |
-| **B** | Shark | 🦈 | Meets base suspicious criteria |
+Alerts are classified using a **score-based system** (nonce + odds + amount):
+
+| Level | Name | Emoji | Score | Criteria |
+|-------|------|-------|-------|----------|
+| **S** | Ghost | 👻 | ≥7 | Suspected insider (fresh wallet + large contrarian bet) |
+| **A** | High | 🐳 | ≥5 | High suspicion (multiple red flags) |
+| **B** | Shark | 🦈 | <5 | Smart money detected |
 
 Alerts are sent via Telegram with rich formatting including:
-- Market name and link
-- Bet direction and odds
-- Trade size
-- Wallet address with PolygonScan link
-- Wallet age classification
+- 🎯 Market name and Polymarket link
+- 📉 Bet direction and odds
+- 💰 Trade size
+- 👤 **Trader username** (searchable on Polymarket)
+- 🕐 **Trade timestamp** (UTC+8)
+- 🕵️ Wallet address with PolygonScan link
+- 📊 Wallet nonce and age classification
 
 ---
 
@@ -147,12 +151,15 @@ python -m tests.test_alert_levels --send
 
 ---
 
-## 🛡️ Security
+## 🛡️ Security & Robustness
 
 - **Never commit `.env`** — it contains your API keys
 - `.gitignore` is configured to exclude sensitive files
 - All Polymarket data is fetched from public APIs (no auth required)
-- RPC calls are made with retry logic and exponential backoff
+- **RPC robustness**: Timeout (10s), retry with exponential backoff, graceful failure
+- **Caching**: Nonce TTL cache (10min) reduces RPC pressure
+- **Address validation**: Invalid addresses are rejected before RPC calls
+- **URL escaping**: Prevents Telegram HTML parse errors
 
 ---
 

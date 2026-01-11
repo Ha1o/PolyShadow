@@ -32,54 +32,104 @@ class TradeAlert:
     wallet_nonce: int
     wallet_age_description: str
     trade_type: str  # "contrarian" or "momentum"
-    timestamp: str
+    timestamp: str  # Alert timestamp (when captured)
+    # New fields for enhanced display
+    trader_name: str = ""       # User's Polymarket username
+    trade_timestamp: str = ""   # When trade was executed
+    event_slug: str = ""        # For correct Polymarket URL
 
 
-def get_alert_level(amount: float, odds: float, nonce: int) -> Tuple[AlertLevel, str, str]:
+def get_alert_level(
+    amount: float,
+    odds: float,
+    nonce: int,
+    min_amount: float = 10000,
+    max_contrarian_odds: float = 0.30
+) -> Tuple[AlertLevel, str, str]:
     """
-    Calculate the threat level for a trade.
+    Calculate the threat level for a trade based on 3 factors.
+    
+    Scoring system (lower nonce + lower odds + higher amount = higher threat):
+    - Nonce: 0-1 = +3, 2-5 = +2, 6-9 = +1
+    - Odds: < max_odds/3 = +3, < max_odds*2/3 = +2, < max_odds = +1
+    - Amount: > 3x min_amount = +3, > 2x min_amount = +2, >= min_amount = +1
+    
+    Level S (GHOST): Score >= 7 - Likely insider
+    Level A (HIGH SUSPICION): Score >= 5 - High suspicion
+    Level B (SHARK): Score >= 1 - Worth watching
     
     Args:
         amount: Trade amount in USDC
         odds: Current odds (0-1)
         nonce: Wallet transaction count
+        min_amount: MIN_TRADE_AMOUNT_USDC from config (default $10K)
+        max_contrarian_odds: MAX_ODDS_FOR_CONTRARIAN from config (default 30%)
         
     Returns:
         Tuple of (AlertLevel, tag_text, emoji)
     """
-    # Level S (GHOST): Brand new wallet + large bet
-    if nonce <= 1 and amount >= 20000:
+    score = 0
+    
+    # Nonce scoring (lower = more suspicious)
+    if nonce <= 1:
+        score += 3
+    elif nonce <= 5:
+        score += 2
+    elif nonce <= 9:
+        score += 1
+    
+    # Odds scoring - dynamic based on max_contrarian_odds
+    # < 1/3 threshold = +3, < 2/3 threshold = +2, < threshold = +1
+    if odds < max_contrarian_odds / 3:
+        score += 3
+    elif odds < max_contrarian_odds * 2 / 3:
+        score += 2
+    elif odds < max_contrarian_odds:
+        score += 1
+    
+    # Amount scoring - dynamic based on min_amount
+    # > 3x = +3, > 2x = +2, >= 1x = +1
+    if amount >= min_amount * 3:
+        score += 3
+    elif amount >= min_amount * 2:
+        score += 2
+    elif amount >= min_amount:
+        score += 1
+    
+    # Level classification based on total score
+    if score >= 7:
         return (
             AlertLevel.S,
             "🚨 <b>SUSPECTED INSIDER</b> 🚨",
             "👻"
         )
-    
-    # Level A (WHALE): Huge bet from any wallet
-    if amount >= 50000:
+    elif score >= 5:
         return (
             AlertLevel.A,
-            "⚠️ <b>WHALE ALERT</b> ⚠️",
+            "⚠️ <b>HIGH SUSPICION</b> ⚠️",
             "🐳"
         )
-    
-    # Level B (SHARK): Default suspicious trade
-    return (
-        AlertLevel.B,
-        "🦈 <b>SMART MONEY</b>",
-        "🦈"
-    )
+    else:
+        return (
+            AlertLevel.B,
+            "🦈 <b>SMART MONEY</b>",
+            "🦈"
+        )
 
 
 def get_nonce_emoji(nonce: int) -> str:
-    """Get emoji indicator for wallet age based on nonce."""
+    """
+    Get emoji indicator for wallet age based on nonce.
+    
+    Must align with detection logic: nonce < 10 = suspicious (new wallet)
+    """
     if nonce <= 1:
         return "👻 Ghost"
     elif nonce <= 5:
         return "🆕 Fresh"
-    elif nonce <= 10:
+    elif nonce < 10:  # Match detection threshold: nonce < 10 = suspicious
         return "🐣 Young"
-    else:
+    else:  # nonce >= 10 = not suspicious
         return "👤 Known"
 
 
@@ -103,7 +153,15 @@ class TelegramAlerter:
     
     TELEGRAM_API_BASE = "https://api.telegram.org/bot"
     
-    def __init__(self, bot_token: str, chat_id: str, thread_id: str = None):
+    def __init__(
+        self,
+        bot_token: str,
+        chat_id: str,
+        thread_id: str = None,
+        min_amount: float = 10000,
+        max_contrarian_odds: float = 0.30,
+        nonce_threshold: int = 10
+    ):
         """
         Initialize Telegram alerter.
         
@@ -111,10 +169,16 @@ class TelegramAlerter:
             bot_token: Telegram Bot API token
             chat_id: Target chat/channel ID
             thread_id: Optional topic/thread ID for groups with Topics enabled
+            min_amount: MIN_TRADE_AMOUNT_USDC for dynamic scoring
+            max_contrarian_odds: MAX_ODDS_FOR_CONTRARIAN for dynamic scoring
+            nonce_threshold: SUSPICIOUS_WALLET_NONCE_THRESHOLD for startup notification
         """
         self.bot_token = bot_token
         self.chat_id = chat_id
         self.thread_id = thread_id
+        self.min_amount = min_amount
+        self.max_contrarian_odds = max_contrarian_odds
+        self.nonce_threshold = nonce_threshold
         self.api_url = f"{self.TELEGRAM_API_BASE}{bot_token}"
     
     def send_message(self, text: str, parse_mode: str = "HTML") -> bool:
@@ -167,11 +231,13 @@ class TelegramAlerter:
         Returns:
             bool: True if sent successfully
         """
-        # Calculate threat level
+        # Calculate threat level (using dynamic config values)
         level, tag, emoji = get_alert_level(
             alert.amount_usdc,
             alert.odds,
-            alert.wallet_nonce
+            alert.wallet_nonce,
+            self.min_amount,
+            self.max_contrarian_odds
         )
         
         # Format values
@@ -186,6 +252,16 @@ class TelegramAlerter:
         # Escape user-provided data to prevent HTML parse errors
         safe_market_name = escape_html(alert.market_name[:60])
         safe_outcome = escape_html(alert.outcome.upper())
+        safe_trader_name = escape_html(alert.trader_name) if alert.trader_name else "Unknown"
+        
+        # Escape URLs for HTML href attributes
+        safe_market_url = html.escape(alert.market_url, quote=True)
+        safe_wallet_url = html.escape(f"https://polygonscan.com/address/{alert.wallet_address}", quote=True)
+        
+        # Handle empty trade_timestamp
+        trade_time_line = ""
+        if alert.trade_timestamp:
+            trade_time_line = f"\n🕐 <b>Trade Time</b>: {alert.trade_timestamp} (UTC+8)"
         
         # Build the beautiful message
         message = f"""{tag}
@@ -195,33 +271,38 @@ class TelegramAlerter:
 🎯 <b>Event</b>: {safe_market_name}{'...' if len(alert.market_name) > 60 else ''}
 
 {bet_emoji} <b>Bet</b>: <code>{safe_outcome}</code>
-📉 <b>Odds</b>: {odds_percent} <i>(Contrarian!)</i>
+📉 <b>Odds</b>: {odds_percent} <i>({alert.trade_type.capitalize()})</i>
 💰 <b>Size</b>: <code>{amount_str}</code> (${alert.amount_usdc:,.0f})
+
+👤 <b>Trader</b>: <code>{safe_trader_name}</code>{trade_time_line}
 
 🕵️ <b>Wallet</b>: <code>{wallet_short}</code>
    ├─ Nonce: <b>{alert.wallet_nonce}</b> {nonce_emoji}
-   └─ <a href="https://polygonscan.com/address/{alert.wallet_address}">View on PolygonScan</a>
+   └─ <a href="{safe_wallet_url}">View on PolygonScan</a>
 
-🔗 <a href="{alert.market_url}">View on Polymarket</a>
+🔗 <a href="{safe_market_url}">View on Polymarket</a>
 {'━' * 30}
 <i>⏰ {alert.timestamp} | Captured by PolyShadow</i>"""
 
         return self.send_message(message)
     
     def send_startup_notification(self) -> bool:
-        """Send a notification that the monitor has started."""
-        message = """🟢 <b>PolyShadow Monitor Started</b>
+        """Send a notification that the monitor has started with dynamic config values."""
+        min_amount_str = f"${self.min_amount:,.0f}"
+        max_odds_str = f"{self.max_contrarian_odds:.0%}"
+        
+        message = f"""🟢 <b>PolyShadow Monitor Started</b>
 
 ━━━━━━━━━━━━━━━━━━━━
 📊 <b>Monitoring</b>: Polymarket Politics
-💰 <b>Min Amount</b>: $10,000 USDC
-📉 <b>Max Odds</b>: ≤30% (Contrarian only)
-👛 <b>Wallet Filter</b>: Nonce &lt; 10
+💰 <b>Min Amount</b>: {min_amount_str} USDC
+📉 <b>Max Odds</b>: ≤{max_odds_str} (Contrarian only)
+👛 <b>Wallet Filter</b>: Nonce &lt; {self.nonce_threshold} (new wallets)
 
-🦈 Alert Levels:
-   👻 <b>S-GHOST</b>: New wallet + $20K+ bet
-   🐳 <b>A-WHALE</b>: $50K+ bet
-   🦈 <b>B-SHARK</b>: Smart money detected
+🦈 Alert Levels (Score-based):
+   👻 <b>S-GHOST</b>: Score ≥7 (Suspected insider)
+   🐳 <b>A-HIGH</b>: Score ≥5 (High suspicion)
+   🦈 <b>B-SHARK</b>: Score &lt;5 (Smart money)
 ━━━━━━━━━━━━━━━━━━━━
 <i>Scanning for insider activity...</i>"""
         return self.send_message(message)

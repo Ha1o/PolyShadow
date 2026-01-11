@@ -7,7 +7,7 @@ import time
 import signal
 import logging
 from datetime import datetime
-from typing import Set
+from cachetools import TTLCache
 
 from config import load_config, Config
 from wallet_checker import WalletChecker
@@ -21,6 +21,47 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S"
 )
 logger = logging.getLogger("PolyShadow")
+
+
+def extract_tag_strings(tags) -> set[str]:
+    """
+    Robustly extract tag strings from various formats.
+    
+    Handles:
+    - list[str]: ["politics", "usa"] -> {"politics", "usa"}
+    - list[dict]: [{"name": "politics"}, ...] -> {"politics"}
+    - str: "politics" -> {"politics"}
+    - None: -> set()
+    - Any other type: -> set()
+    
+    Args:
+        tags: Tags in various formats from API
+        
+    Returns:
+        set[str]: Lowercase tag strings
+    """
+    result = set()
+    
+    if tags is None:
+        return result
+    
+    # Single string
+    if isinstance(tags, str):
+        return {tags.lower().strip()}
+    
+    # List or tuple
+    if isinstance(tags, (list, tuple)):
+        for tag in tags:
+            if isinstance(tag, str):
+                result.add(tag.lower().strip())
+            elif isinstance(tag, dict):
+                # Try common dict keys for tag name
+                for key in ["name", "slug", "label", "tag", "id"]:
+                    if key in tag and tag[key]:
+                        result.add(str(tag[key]).lower().strip())
+                        break
+    
+    return result
 
 
 class PolyShadowMonitor:
@@ -45,8 +86,9 @@ class PolyShadowMonitor:
         self.config = config
         self.running = False
         
-        # Track seen trades to avoid duplicate alerts
-        self.seen_trades: Set[str] = set()
+        # Track seen trades with TTL to avoid duplicate alerts and prevent memory growth
+        # TTL: 1 hour, Max: 10000 trades
+        self.seen_trades: TTLCache = TTLCache(maxsize=10000, ttl=3600)
         
         # Initialize components
         logger.info("Initializing PolyShadow components...")
@@ -59,7 +101,10 @@ class PolyShadowMonitor:
         self.alerter = TelegramAlerter(
             config.telegram_bot_token,
             config.telegram_chat_id,
-            config.telegram_thread_id or None
+            config.telegram_thread_id or None,
+            config.min_trade_amount_usdc,
+            config.max_odds_for_contrarian,
+            config.suspicious_wallet_nonce_threshold
         )
         
         logger.info("✅ All components initialized successfully")
@@ -68,7 +113,8 @@ class PolyShadowMonitor:
         self,
         trade: Trade,
         trade_type: str,
-        market: Market
+        market: Market,
+        outcome_prices: dict[str, float]
     ) -> bool:
         """
         Perform full analysis on a suspicious trade.
@@ -77,20 +123,23 @@ class PolyShadowMonitor:
             trade: The trade to analyze
             trade_type: "contrarian" or "momentum"
             market: The market the trade belongs to
+            outcome_prices: Pre-built map of outcome -> price
             
         Returns:
             bool: True if alert was sent
         """
-        # Skip if we've already seen this trade
+        # Skip if we've already seen this trade (TTLCache is dict-like)
         if trade.trade_id in self.seen_trades:
             return False
         
-        self.seen_trades.add(trade.trade_id)
+        self.seen_trades[trade.trade_id] = True
         
         # Determine which wallet to check (taker initiated the trade)
         wallet_address = trade.taker_address
         if not wallet_address:
             wallet_address = trade.maker_address
+        
+        logger.debug(f"Trade wallet check: taker={trade.taker_address}, maker={trade.maker_address}, using={wallet_address}")
         
         if not wallet_address:
             logger.warning(f"Trade {trade.trade_id} has no wallet address")
@@ -115,19 +164,16 @@ class PolyShadowMonitor:
             f"   Wallet Age: {nonce} txs"
         )
         
-        # Get current price for the outcome
-        outcome_idx = 0
-        for i, o in enumerate(market.outcomes):
-            if o == trade.outcome:
-                outcome_idx = i
-                break
+        # Get current price for the outcome (use pre-built outcome_prices, fallback to trade.price)
+        current_odds = outcome_prices.get(trade.outcome, trade.price)
         
-        current_odds = market.outcome_prices[outcome_idx] if outcome_idx < len(market.outcome_prices) else trade.price
+        # Build correct Polymarket URL using event_slug from trade data
+        event_url = f"https://polymarket.com/event/{trade.event_slug}" if trade.event_slug else market.url
         
         # Build and send alert
         alert = TradeAlert(
             market_name=market.question,
-            market_url=market.url,
+            market_url=event_url,
             outcome=trade.outcome,
             odds=current_odds,
             amount_usdc=trade.amount_usdc,
@@ -135,7 +181,10 @@ class PolyShadowMonitor:
             wallet_nonce=nonce,
             wallet_age_description=self.wallet_checker.get_wallet_age_description(nonce),
             trade_type=trade_type,
-            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
+            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC"),
+            trader_name=trade.trader_name or trade.pseudonym or "",
+            trade_timestamp=trade.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+            event_slug=trade.event_slug
         )
         
         return self.alerter.send_trade_alert(alert)
@@ -162,6 +211,13 @@ class PolyShadowMonitor:
         # Step 2-4: Process each market
         for market in markets:
             try:
+                # Secondary validation: ensure this is a politics market
+                # Use robust tag extraction to handle various formats (list[str], list[dict], str, None)
+                market_tags = extract_tag_strings(market.tags)
+                if "politics" not in market_tags:
+                    logger.debug(f"Skipping non-politics market: {market.question[:40]}... (tags: {market.tags})")
+                    continue
+                
                 # Get recent trades
                 trades = self.polymarket.get_recent_trades(market.condition_id)
                 
@@ -184,7 +240,7 @@ class PolyShadowMonitor:
                 
                 # Analyze each suspicious trade
                 for trade, trade_type in suspicious:
-                    if self.analyze_trade(trade, trade_type, market):
+                    if self.analyze_trade(trade, trade_type, market, outcome_prices):
                         alerts_sent += 1
                 
             except Exception as e:

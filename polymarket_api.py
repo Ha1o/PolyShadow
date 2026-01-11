@@ -10,7 +10,7 @@ import logging
 import json
 from typing import Optional
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,7 @@ class Market:
     outcomes: list[str]
     outcome_prices: list[float]
     url: str
+    tags: list  # Market category tags - can be list[str] or list[dict], use extract_tag_strings() for parsing
 
 
 @dataclass
@@ -44,6 +45,10 @@ class Trade:
     size: float  # Amount in shares
     amount_usdc: float  # Dollar amount
     timestamp: datetime
+    # Trader display info (from API)
+    trader_name: str = ""  # User's chosen name (e.g. "Sharky6999")
+    pseudonym: str = ""    # System-generated pseudonym
+    event_slug: str = ""   # For correct event URL
 
 
 class PolymarketAPI:
@@ -124,6 +129,7 @@ class PolymarketAPI:
                         outcomes=outcomes,
                         outcome_prices=outcome_prices,
                         url=f"https://polymarket.com/event/{m.get('slug', '')}",
+                        tags=self._parse_list_field(m.get("tags", [])),
                     ))
                 except (ValueError, KeyError) as e:
                     logger.warning(f"Error parsing market: {e}")
@@ -174,12 +180,13 @@ class PolymarketAPI:
                     # Data API uses 'proxyWallet' for the trader address
                     wallet_address = t.get("proxyWallet", "")
                     
-                    # Parse Unix timestamp
+                    # Parse Unix timestamp and convert to UTC+8
                     timestamp_val = t.get("timestamp", 0)
+                    utc_plus_8 = timezone(timedelta(hours=8))
                     if isinstance(timestamp_val, (int, float)):
-                        trade_time = datetime.fromtimestamp(timestamp_val)
+                        trade_time = datetime.fromtimestamp(timestamp_val, tz=utc_plus_8)
                     else:
-                        trade_time = datetime.now()
+                        trade_time = datetime.now(tz=utc_plus_8)
                     
                     # Use transaction hash as trade ID
                     trade_id = t.get("transactionHash", "")
@@ -195,6 +202,9 @@ class PolymarketAPI:
                         size=size,
                         amount_usdc=price * size,
                         timestamp=trade_time,
+                        trader_name=t.get("name", ""),
+                        pseudonym=t.get("pseudonym", ""),
+                        event_slug=t.get("eventSlug", t.get("slug", "")),
                     ))
                 except (ValueError, KeyError, TypeError) as e:
                     logger.debug(f"Error parsing trade: {e}")
@@ -217,49 +227,38 @@ class PolymarketAPI:
         """
         Filter trades for suspicious activity.
         
+        Core logic: Only detect CONTRARIAN trades (buying low-probability outcomes).
+        
         Args:
             trades: List of trades to filter
-            min_amount: Minimum trade amount in USDC
-            max_contrarian_odds: Maximum odds for contrarian classification
+            min_amount: Minimum trade amount in USDC (from MIN_TRADE_AMOUNT_USDC env)
+            max_contrarian_odds: Maximum odds for contrarian classification (from MAX_ODDS_FOR_CONTRARIAN env)
             market_outcome_prices: Dict mapping outcome name to current price
             
         Returns:
-            List of (Trade, trade_type) tuples where trade_type is "contrarian" or "momentum"
+            List of (Trade, "contrarian") tuples
         """
         suspicious_trades = []
         
         for trade in trades:
-            # Filter 1: Amount threshold
+            # Filter 1: Amount threshold (MIN_TRADE_AMOUNT_USDC)
             if trade.amount_usdc < min_amount:
                 continue
             
-            # Only analyze BUY trades
+            # Filter 2: Only analyze BUY trades
             if trade.side != "BUY":
                 continue
             
             # Get the current price for this outcome
             current_price = market_outcome_prices.get(trade.outcome, 0.5)
             
-            # Filter 2: Trade direction analysis
-            trade_type = None
-            
-            # Contrarian: Buying low-probability outcomes
+            # Filter 3: Contrarian only - buying low-probability outcomes (< MAX_ODDS_FOR_CONTRARIAN)
             if current_price < max_contrarian_odds:
-                trade_type = "contrarian"
                 logger.info(
-                    f"Contrarian trade: ${trade.amount_usdc:.2f} on {trade.outcome} "
-                    f"@ {current_price:.1%} odds"
+                    f"Contrarian trade detected: ${trade.amount_usdc:,.2f} on {trade.outcome} "
+                    f"@ {current_price:.1%} odds (threshold: {max_contrarian_odds:.0%})"
                 )
-            
-            # Momentum: Large trades (could be momentum buying)
-            elif trade.amount_usdc >= min_amount * 5:  # 5x threshold = momentum
-                trade_type = "momentum"
-                logger.info(
-                    f"Momentum trade: ${trade.amount_usdc:.2f} on {trade.outcome}"
-                )
-            
-            if trade_type:
-                suspicious_trades.append((trade, trade_type))
+                suspicious_trades.append((trade, "contrarian"))
         
         return suspicious_trades
 

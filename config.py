@@ -66,8 +66,8 @@ def load_config() -> Config:
         polymarket_api_secret=os.getenv("POLYMARKET_API_SECRET", ""),
         polymarket_api_passphrase=os.getenv("POLYMARKET_API_PASSPHRASE", ""),
         poll_interval_seconds=int(os.getenv("POLL_INTERVAL_SECONDS", "30")),
-        # Core detection thresholds (must match business logic: $10K / 30% / nonce<10)
-        min_trade_amount_usdc=float(os.getenv("MIN_TRADE_AMOUNT_USDC", "10000")),
+        # Core detection thresholds (must match business logic: $5K / 30% / nonce<10)
+        min_trade_amount_usdc=float(os.getenv("MIN_TRADE_AMOUNT_USDC", "5000")),
         max_odds_for_contrarian=float(os.getenv("MAX_ODDS_FOR_CONTRARIAN", "0.30")),
         suspicious_wallet_nonce_threshold=int(os.getenv("SUSPICIOUS_WALLET_NONCE_THRESHOLD", "10")),  # nonce < this value = suspicious
     )

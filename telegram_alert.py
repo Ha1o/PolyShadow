@@ -62,7 +62,7 @@ def get_alert_level(
         amount: Trade amount in USDC
         odds: Current odds (0-1)
         nonce: Wallet transaction count
-        min_amount: MIN_TRADE_AMOUNT_USDC from config (default $10K)
+        min_amount: MIN_TRADE_AMOUNT_USDC from config (default $5K)
         max_contrarian_odds: MAX_ODDS_FOR_CONTRARIAN from config (default 30%)
         
     Returns:

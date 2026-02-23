@@ -12,12 +12,12 @@ PolyShadow monitors Polymarket's political prediction markets for suspicious tra
 
 PolyShadow flags trades that meet ALL of the following criteria:
 
-| Filter | Threshold | Rationale |
-|--------|-----------|-----------|
-| **Category** | Politics | Focus on politically-sensitive markets |
-| **Trade Size** | >$10,000 USDC | Filters out noise from small trades |
-| **Odds** | <30% | Contrarian bets against market consensus |
-| **Wallet Nonce** | <10 transactions | Fresh wallet detection |
+| Filter           | Threshold        | Rationale                                |
+| ---------------- | ---------------- | ---------------------------------------- |
+| **Category**     | Politics         | Focus on politically-sensitive markets   |
+| **Trade Size**   | >$10,000 USDC    | Filters out noise from small trades      |
+| **Odds**         | <30%             | Contrarian bets against market consensus |
+| **Wallet Nonce** | <10 transactions | Fresh wallet detection                   |
 
 ### 🧪 Fresh Wallet / Nonce Check
 
@@ -34,11 +34,11 @@ PolyShadow detects this by querying the wallet's transaction count (nonce) on Po
 
 Alerts are classified using a **score-based system** (nonce + odds + amount):
 
-| Level | Name | Emoji | Score | Criteria |
-|-------|------|-------|-------|----------|
-| **S** | Ghost | 👻 | ≥7 | Suspected insider (fresh wallet + large contrarian bet) |
-| **A** | High | 🐳 | ≥5 | High suspicion (multiple red flags) |
-| **B** | Shark | 🦈 | <5 | Smart money detected |
+| Level | Name  | Emoji | Score | Criteria                                                |
+| ----- | ----- | ----- | ----- | ------------------------------------------------------- |
+| **S** | Ghost | 👻     | ≥7    | Suspected insider (fresh wallet + large contrarian bet) |
+| **A** | High  | 🐳     | ≥5    | High suspicion (multiple red flags)                     |
+| **B** | Shark | 🦈     | <5    | Smart money detected                                    |
 
 Alerts are sent via Telegram with rich formatting including:
 - 🎯 Market name and Polymarket link
@@ -92,18 +92,18 @@ TELEGRAM_THREAD_ID=
 
 # Thresholds (optional - defaults shown)
 POLL_INTERVAL_SECONDS=30
-MIN_TRADE_AMOUNT_USDC=10000
+MIN_TRADE_AMOUNT_USDC=5000
 MAX_ODDS_FOR_CONTRARIAN=0.30
 SUSPICIOUS_WALLET_NONCE_THRESHOLD=10
 ```
 
 #### Telegram Notification Modes
 
-| Configuration | Behavior |
-|---------------|----------|
-| `CHAT_ID` = your user ID, `THREAD_ID` = empty | Bot sends DM to you |
-| `CHAT_ID` = group ID, `THREAD_ID` = empty | Bot posts to group main chat |
-| `CHAT_ID` = group ID, `THREAD_ID` = 123 | Bot posts to specific topic #123 |
+| Configuration                                 | Behavior                         |
+| --------------------------------------------- | -------------------------------- |
+| `CHAT_ID` = your user ID, `THREAD_ID` = empty | Bot sends DM to you              |
+| `CHAT_ID` = group ID, `THREAD_ID` = empty     | Bot posts to group main chat     |
+| `CHAT_ID` = group ID, `THREAD_ID` = 123       | Bot posts to specific topic #123 |
 
 > **Tip**: To get a Topic ID, right-click the topic → "Copy Topic Link" → the last number in the URL is the Thread ID.
 
